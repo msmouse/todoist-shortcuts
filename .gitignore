@@ -8,3 +8,5 @@ node_modules
 /etc/notes.md
 /etc/monitor.js
 /etc/test-token
+# Local test session cookies - never commit (real Todoist session).
+/e2e/storageState.json

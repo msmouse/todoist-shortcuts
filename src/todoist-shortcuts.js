@@ -1059,6 +1059,48 @@
     clickAll(document, '.ts-modal-close');
   }
 
+  // After committing a task with Enter, Todoist leaves the inline editor open
+  // with an empty field so more tasks can be added in a row. This finds that
+  // leftover empty editor (the "add another task" prompt).  Returns null when
+  // no editor is open or the open editor still has text (e.g. the user is
+  // mid-typing, or accepted an autocomplete suggestion).
+  function findEmptyInlineEditor() {
+    return getUnique(document, TASK_EDITOR_SELECTOR, (manager) => {
+      const field = getFirst(manager, '[contenteditable="true"], textarea');
+      if (!field) {
+        return false;
+      }
+      const text = typeof field.value === 'string' && field.value !== '' ?
+            field.value : (field.textContent || '');
+      return text.trim() === '';
+    });
+  }
+
+  // Makes Enter save the current task and return to the list, rather than
+  // leaving Todoist's editor open for continuous entry.  Called after an Enter
+  // that commits an inline editor: once Todoist has committed the task and
+  // opened its empty continuation editor, that editor is closed.  Inline edits
+  // of existing tasks already close their own editor, so nothing is found and
+  // this is a harmless no-op there.
+  async function returnToListAfterEditorCommit() {
+    try {
+      // The empty field only appears once the typed task has been committed,
+      // so finding it means the commit is done and closing is safe.
+      const editor = await retryWithDelay(
+          'waiting for leftover task editor', findEmptyInlineEditor);
+      clickUnique(editor, 'button[aria-label="Cancel"]');
+      // Todoist's Cancel button, unlike Escape, does not put the cursor back on
+      // the list. Once the editor is gone, re-establish it so keyboard
+      // navigation keeps working without touching the mouse. The stored
+      // implicit-editing context lands it on the task that was just added.
+      await retryWithDelay('waiting for the editor to close',
+          () => (findTaskEditor() ? null : true));
+      ensureCursor();
+    } catch (e) {
+      // No leftover editor appeared - the commit already returned to the list.
+    }
+  }
+
   // The ids Todoist gives the layout radio buttons in the view options menu.
   // In the order Todoist's own shift+v shortcut cycles through them.
   const LAYOUTS = ['LIST', 'BOARD', 'CALENDAR'];
@@ -5685,6 +5727,15 @@
       if (!checkTaskViewOpen()) {
         closeContextMenus();
       }
+    }
+    // Plain Enter inside an inline task editor commits the task. Todoist would
+    // then keep the editor open for continuous entry; instead, close it and
+    // return to the list. Not preventDefault: Todoist still does the commit.
+    if (ev.type === 'keydown' && ev.keyCode === ENTER_KEYCODE &&
+        !ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey &&
+        ev.target && ev.target.closest &&
+        ev.target.closest(TASK_EDITOR_SELECTOR)) {
+      returnToListAfterEditorCommit();
     }
     if (deferLastKeyDownEnabled) {
       lastDeferredEvent = ev;
