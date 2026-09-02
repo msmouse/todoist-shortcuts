@@ -10,3 +10,7 @@ node_modules
 /etc/test-token
 # Local test session cookies - never commit (real Todoist session).
 /e2e/storageState.json
+# Screenshots of the real Todoist account - not for a public fork.
+/e2e/artifacts/
+# Dev-harness config owned by the parent (NAS) repo, not this one.
+/.devcontainer/
