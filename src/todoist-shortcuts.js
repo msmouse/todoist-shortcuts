@@ -1082,22 +1082,37 @@
   // opened its empty continuation editor, that editor is closed.  Inline edits
   // of existing tasks already close their own editor, so nothing is found and
   // this is a harmless no-op there.
-  async function returnToListAfterEditorCommit() {
+  async function returnToListAfterEditorCommit(editedTaskId) {
     try {
       // The empty field only appears once the typed task has been committed,
       // so finding it means the commit is done and closing is safe.
       const editor = await retryWithDelay(
           'waiting for leftover task editor', findEmptyInlineEditor);
       clickUnique(editor, 'button[aria-label="Cancel"]');
-      // Todoist's Cancel button, unlike Escape, does not put the cursor back on
-      // the list. Once the editor is gone, re-establish it so keyboard
-      // navigation keeps working without touching the mouse. The stored
-      // implicit-editing context lands it on the task that was just added.
       await retryWithDelay('waiting for the editor to close',
           () => (findTaskEditor() ? null : true));
-      ensureCursor();
     } catch (e) {
       // No leftover editor appeared - the commit already returned to the list.
+    }
+    // Todoist's Cancel button, unlike Escape, does not put the cursor back on
+    // the list, so re-establish it here - otherwise keyboard navigation is dead
+    // until the mouse is moved.
+    if (editedTaskId) {
+      // An inline edit: keep the cursor on the edited task. ensureCursor can't
+      // be used here: in variants that reopen an editor after editing, the
+      // stored context has flipped to the "add" rule, which would land the
+      // cursor on the *next* task instead.
+      try {
+        const task = await retryWithDelay('finding the edited task',
+            () => getTaskById(editedTaskId, 'ignore-indent'));
+        setCursor(task, 'no-scroll');
+      } catch (e) {
+        ensureCursor();
+      }
+    } else {
+      // An add: the stored implicit-editing context lands the cursor on the
+      // task that was just added.
+      ensureCursor();
     }
   }
 
@@ -5735,7 +5750,12 @@
         !ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey &&
         ev.target && ev.target.closest &&
         ev.target.closest(TASK_EDITOR_SELECTOR)) {
-      returnToListAfterEditorCommit();
+      // Capture now whether this commits an inline edit of an existing task
+      // (rather than adding one). Todoist re-renders after the commit, which
+      // flips the stored context to the "add" case, so it has to be read here.
+      const editedTaskId =
+            lastCursorType === TYPE_EXPLICIT_EDITING ? lastCursorId : null;
+      returnToListAfterEditorCommit(editedTaskId);
     }
     if (deferLastKeyDownEnabled) {
       lastDeferredEvent = ev;

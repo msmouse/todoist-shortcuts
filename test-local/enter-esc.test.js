@@ -80,30 +80,42 @@ describe('Enter / Escape in the inline task editor', {timeout: TIMEOUT}, () => {
         assert.notEqual(afterK, landed, 'k should move the cursor off the added task');
       });
 
-  it('inline-editing a task with Enter returns to the list', async () => {
-    const name = marker + '-edit';
-    // Seed a task to edit.
-    await h.cursorToFirst(page);
-    await h.typeInNewEditor(page, 'a', name);
-    await page.keyboard.press('Enter');
-    assert.ok(await h.waitEditor(page, false), 'add editor should close');
+  it('inline-editing a task with Enter keeps the cursor on the edited task',
+      async () => {
+        const a = marker + '-editA';
+        const b = marker + '-editB';
+        // Seed two tasks so the edited one (A) has a task (B) right after it -
+        // that is the task the "next task" bug would wrongly jump to.
+        await h.cursorToFirst(page);
+        await h.typeInNewEditor(page, 'a', a);
+        await page.keyboard.press('Enter');
+        assert.ok(await h.waitEditor(page, false), 'add A editor should close');
+        await h.typeInNewEditor(page, 'a', b);
+        await page.keyboard.press('Enter');
+        assert.ok(await h.waitEditor(page, false), 'add B editor should close');
 
-    // Edit it: cursor onto it, Enter opens the inline editor.
-    assert.ok(await h.cursorTo(page, name), 'should find the task to edit');
-    await page.keyboard.press('Enter');
-    assert.ok(await h.waitEditorFocused(page), 'inline edit editor should open');
-    await h.sleep(300);
-    await page.keyboard.type(' EDITED');
-    await h.sleep(300);
+        // Edit A: cursor onto it, Enter opens the inline editor.
+        assert.ok(await h.cursorTo(page, a), 'should find task A to edit');
+        await page.keyboard.press('Enter');
+        assert.ok(await h.waitEditorFocused(page), 'inline edit editor should open');
+        await h.sleep(300);
+        await page.keyboard.type(' EDITED');
+        await h.sleep(300);
 
-    await page.keyboard.press('Enter');
+        await page.keyboard.press('Enter');
 
-    assert.ok(await h.waitEditor(page, false),
-        'inline edit should return to the list, not open a new task');
-    assert.equal(await h.managerCount(page), 0);
-    assert.ok((await h.taskContents(page)).some((t) => t.includes(name + ' EDITED')),
-        'the edit should have been saved');
-  });
+        assert.ok(await h.waitEditor(page, false),
+            'inline edit should return to the list, not open a new task');
+        assert.equal(await h.managerCount(page), 0);
+        assert.ok((await h.taskContents(page)).some((t) => t.includes(a + ' EDITED')),
+            'the edit should have been saved');
+        // The cursor must stay on the edited task, not jump to the next one.
+        const cur = await h.waitCursor(page);
+        assert.ok(cur && cur.includes('editA'),
+            'the cursor should stay on the edited task, but was on: ' + cur);
+        assert.ok(!cur.includes('editB'),
+            'the cursor must not jump to the next task');
+      });
 
   it('Escape closes the editor and leaves keyboard navigation working',
       async () => {
